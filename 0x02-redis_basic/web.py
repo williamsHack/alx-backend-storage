@@ -14,41 +14,54 @@ an expiration time of 10 seconds.
 Tip: Use http://slowwly.robertomurray.co.uk to simulate
 a slow response and test your caching."""
 
-
 import redis
 import requests
 from functools import wraps
 
-r = redis.Redis()
+def cache_and_track(expiration_time: int):
+    """A decorator that implements an expiring web cache and tracker.
 
+    Args:
+        expiration_time: The expiration time in seconds.
 
-def url_access_count(method):
-    """decorator for get_page function"""
-    @wraps(method)
-    def wrapper(url):
-        """wrapper function"""
-        key = "cached:" + url
-        cached_value = r.get(key)
-        if cached_value:
-            return cached_value.decode("utf-8")
+    Returns:
+        A decorator function.
+    """
 
-            # Get new content and update cache
-        key_count = "count:" + url
-        html_content = method(url)
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            url = args[0]
 
-        r.incr(key_count)
-        r.set(key, html_content, ex=10)
-        r.expire(key, 10)
-        return html_content
-    return wrapper
+            # Check if the page is already cached.
+            cache_key = f"cached:{url}"
+            cached_page = redis.get(cache_key)
+            if cached_page:
+                # If the page is cached, return the cached value.
+                return cached_page.decode("utf-8")
 
+            # If the page is not cached, fetch it from the web.
+            response = func(*args, **kwargs)
+            response.raise_for_status()
 
-@url_access_count
+            # Cache the page for the specified expiration time.
+            redis.set(cache_key, response.content, ex=expiration_time)
+
+            # Increment the access count for the page.
+            count_key = f"count:{url}"
+            redis.incr(count_key)
+
+            return response.content
+
+        return wrapper
+
+    return decorator
+
+@cache_and_track(expiration_time=10)
 def get_page(url: str) -> str:
     """obtain the HTML content of a particular"""
     results = requests.get(url)
     return results.text
-
 
 if __name__ == "__main__":
     get_page('http://slowwly.robertomurray.co.uk')
