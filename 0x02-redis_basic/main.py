@@ -12,5 +12,11 @@ data = b"hello"
 key = cache.store(data)
 print(key)
 
+get_page(URL)
+get_page(URL)
+get_page(URL)
+get_page(URL)
+get_page(URL)
+
 local_redis = redis.Redis()
 print(local_redis.get(key))
