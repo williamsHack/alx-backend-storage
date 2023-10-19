@@ -1,37 +1,48 @@
 #!/usr/bin/env python3
 """
-Caching request module with separate caches for different URLs
+Caching request module for a different URL
 """
 import redis
 import requests
 from functools import wraps
 from typing import Callable
 
-def track_get_page(cache_name: str) -> Callable:
-    def decorator(fn: Callable) -> Callable:
-        @wraps(fn)
-        def wrapper(url: str) -> str:
-            client = redis.Redis()
-            cache_key = f'{cache_name}:{url}'
-            
-            client.incr(f'count:{cache_key}')
-            cached_page = client.get(cache_key)
-            if cached_page:
-                return cached_page.decode('utf-8')
-            
-            response = fn(url)
-            client.setex(cache_key, 10, response)
-            return response
-        return wrapper
-    return decorator
 
-@track_get_page("default_cache")
+def track_get_page(fn: Callable) -> Callable:
+    """ Decorator for get_page
+    """
+    @wraps(fn)
+    def wrapper(url: str) -> str:
+        """ Wrapper that:
+            - check whether a URL's data is cached
+            - tracks how many times get_page is called
+        """
+        client = redis.Redis()
+        client.incr(f'count:{url}')
+        cached_page = client.get(f'{url}')
+        if cached_page:
+            return cached_page.decode('utf-8')
+        response = fn(url)
+        client.set(f'{url}', response, 10)
+        return response
+    return wrapper
+
+
+@track_get_page
 def get_page(url: str) -> str:
+    """ Makes an HTTP request to a different endpoint
+    """
     response = requests.get(url)
     return response.text
 
-@track_get_page("special_cache")
-def get_special_page(url: str) -> str:
-    response = requests.get(url)
-    return response.text
+if __name__ == "__main__":
+    # Example usage of the decorated get_page function
+    url = "https://example.com"  # Replace with the desired URL
+    content = get_page(url)
+    print(content)
+
+    # Get the access count for the URL
+    client = redis.Redis()
+    access_count = client.get(f'count:{url}')
+    print(f"Access count for {url}: {access_count.decode('utf-8')}")
 
