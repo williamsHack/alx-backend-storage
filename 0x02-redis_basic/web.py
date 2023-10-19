@@ -1,68 +1,52 @@
-import redis
 import requests
+import redis
 from functools import wraps
 
-def cache_and_track(expiration_time: int):
-    """
-    A decorator that implements an expiring web cache and tracker.
+# Initialize a Redis connection
+r = redis.StrictRedis(host='localhost', port=6379, db=0)
 
-    Args:
-        expiration_time: The expiration time in seconds.
-
-    Returns:
-        A decorator function.
-    """
-
+# Define a decorator to cache and track URL accesses
+def cache_and_track(url):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            url = args[0]
+            # Check if the URL is in the cache
+            cached_data = r.get(f"cache:{url}")
 
-            # Check if the page is already cached.
-            cached_page = redis_client.get(f"cached:{url}")
-            if cached_page:
-                # If the page is cached, return the cached value.
-                return cached_page.decode("utf-8")
+            if cached_data:
+                # If cached data exists, increment the access count
+                r.incr(f"count:{url}")
+                return cached_data.decode('utf-8')
 
-            # If the page is not cached, fetch it from the web.
+            # If the URL is not in the cache, fetch the web page
             response = func(*args, **kwargs)
-            response.raise_for_status()
 
-            # Cache the page for the specified expiration time.
-            redis_client.set(f"cached:{url}", response.content, ex=expiration_time)
+            # Store the web page content in the cache with a 10-second expiration
+            r.setex(f"cache:{url}", 10, response)
 
-            # Increment the access count for the page.
-            redis_client.incr(f"count:{url}")
+            # Increment the access count
+            r.incr(f"count:{url}")
 
-            return response.content
+            return response
 
         return wrapper
 
     return decorator
 
-redis_client = redis.Redis()
-
-@cache_and_track(expiration_time=10)
+# Define the get_page function with the decorator
+@cache_and_track("http://slowwly.robertomurray.co.uk")
 def get_page(url: str) -> str:
-    """
-    Obtains the HTML content of a particular URL.
-
-    Args:
-        url: The URL of the web page.
-
-    Returns:
-        The HTML content of the web page.
-    """
-
     response = requests.get(url)
-    response.raise_for_status()
-
-    return response.content
+    return response.text
 
 if __name__ == "__main__":
-    # Get the HTML content of the Google homepage.
-    google_homepage = get_page("https://www.google.com/")
+    # Test the get_page function
+    for _ in range(5):
+        content = get_page("http://slowwly.robertomurray.co.uk")
+        print(content)
 
-    # Get the HTML content of the Wikipedia article on Python.
-    wikipedia_python_article = get_page("https://en.wikipedia.org/wiki/Python")
+    # Get the access count for the URL
+    access_count = r.get("count:http://slowwly.robertomurray.co.uk")
+    print(f"Access count: {access_count.decode('utf-8')}")
+
 
