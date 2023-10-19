@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Caching request module for a different URL with 30-second cache expiration
+Caching request module for a different URL with 10-second cache expiration
 """
 import redis
 import requests
@@ -22,7 +22,7 @@ def track_get_page(fn: Callable) -> Callable:
         if cached_page:
             return cached_page.decode('utf-8')
         response = fn(url)
-        client.set(f'{url}', response, 30)  # Cache with a 30-second expiration
+        client.set(f'{url}', response, 10)  # Cache with a 30-second expiration
         return response
 
     return wrapper
