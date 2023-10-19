@@ -1,52 +1,37 @@
-import requests
+#!/usr/bin/env python3
+"""
+Caching request module with separate caches for different URLs
+"""
 import redis
+import requests
 from functools import wraps
+from typing import Callable
 
-# Initialize a Redis connection
-r = redis.StrictRedis(host='localhost', port=6379, db=0)
-
-# Define a decorator to cache and track URL accesses
-def cache_and_track(url):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            # Check if the URL is in the cache
-            cached_data = r.get(f"cache:{url}")
-
-            if cached_data:
-                # If cached data exists, increment the access count
-                r.incr(f"count:{url}")
-                return cached_data.decode('utf-8')
-
-            # If the URL is not in the cache, fetch the web page
-            response = func(*args, **kwargs)
-
-            # Store the web page content in the cache with a 10-second expiration
-            r.setex(f"cache:{url}", 10, response)
-
-            # Increment the access count
-            r.incr(f"count:{url}")
-
+def track_get_page(cache_name: str) -> Callable:
+    def decorator(fn: Callable) -> Callable:
+        @wraps(fn)
+        def wrapper(url: str) -> str:
+            client = redis.Redis()
+            cache_key = f'{cache_name}:{url}'
+            
+            client.incr(f'count:{cache_key}')
+            cached_page = client.get(cache_key)
+            if cached_page:
+                return cached_page.decode('utf-8')
+            
+            response = fn(url)
+            client.setex(cache_key, 10, response)
             return response
-
         return wrapper
-
     return decorator
 
-# Define the get_page function with the decorator
-@cache_and_track("http://slowwly.robertomurray.co.uk")
+@track_get_page("default_cache")
 def get_page(url: str) -> str:
     response = requests.get(url)
     return response.text
 
-if __name__ == "__main__":
-    # Test the get_page function
-    for _ in range(5):
-        content = get_page("http://slowwly.robertomurray.co.uk")
-        print(content)
-
-    # Get the access count for the URL
-    access_count = r.get("count:http://slowwly.robertomurray.co.uk")
-    print(f"Access count: {access_count.decode('utf-8')}")
-
+@track_get_page("special_cache")
+def get_special_page(url: str) -> str:
+    response = requests.get(url)
+    return response.text
 
