@@ -37,7 +37,7 @@ def get_page(url: str) -> str:
 
 if __name__ == "__main__":
     # Example usage of the decorated get_page function
-    url = "https://example.com"  # Replace with the desired URL
+    url = "http://slowwly.robertomurray.co.uk"  # Replace with the desired URL
     content = get_page(url)
     print(content)
 
