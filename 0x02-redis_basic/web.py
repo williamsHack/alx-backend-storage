@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Caching request module for a different URL with 10-second cache expiration
+Caching request module with a Redis connection pool
 """
 import redis
 import requests
 from functools import wraps
 from typing import Callable
+
+# Create a Redis connection pool for improved performance
+redis_pool = redis.ConnectionPool(host='localhost', port=6379, db=0)
+redis_client = redis.Redis(connection_pool=redis_pool)
 
 def track_get_page(fn: Callable) -> Callable:
     """ Decorator for get_page
@@ -13,18 +17,21 @@ def track_get_page(fn: Callable) -> Callable:
     @wraps(fn)
     def wrapper(url: str) -> str:
         """ Wrapper that:
-            - check whether a URL's data is cached
+            - checks whether a URL's data is cached
             - tracks how many times get_page is called
         """
-        client = redis.Redis()
-        client.incr(f'count:{url}')
-        cached_page = client.get(f'{url}')
+        redis_key = f'cache:{url}'
+        access_count_key = f'count:{url}'
+        redis_client.incr(access_count_key)
+        cached_page = redis_client.get(redis_key)
+        
         if cached_page:
             return cached_page.decode('utf-8')
+        
         response = fn(url)
-        client.set(f'{url}', response, 10)  # Cache with a 30-second expiration
+        redis_client.setex(redis_key, 10, response)
         return response
-
+    
     return wrapper
 
 @track_get_page
@@ -35,12 +42,12 @@ def get_page(url: str) -> str:
     return response.text
 
 if __name__ == "__main__":
-    # Test the get_page function with a different URL
+    # Test the get_page function
     for _ in range(5):
-        content = get_page("http://slowwly.robertomurray.co.uk")  # Replace with your desired URL
+        content = get_page("http://slowwly.robertomurray.co.uk")
         print(content)
 
     # Get the access count for the URL
-    access_count = redis.Redis().get("count:http://slowwly.robertomurray.co.uk")  # Replace with your desired URL
+    access_count = redis_client.get("count:http://slowwly.robertomurray.co.uk")
     print(f"Access count: {access_count.decode('utf-8')}")
 
